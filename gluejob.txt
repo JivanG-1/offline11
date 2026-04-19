@@ -1,0 +1,45 @@
+import sys
+import requests
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
+from awsglue.utils import getResolvedOptions
+
+# Initialize Glue Context
+sc = SparkContext.getOrCreate()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+
+# 1. Fetch data from your API Link
+# Use the JSONBin link or your MockAPI link here
+API_URL = "https://jsonbin.io"
+
+def fetch_api_data(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"API Error: {response.status_code}")
+
+# 2. Convert to Spark DataFrame
+raw_data = fetch_api_data(API_URL)
+# If the API returns a list, parallelize it
+df = spark.createDataFrame(raw_data)
+
+# 3. Convert to Glue DynamicFrame (Required for Glue transforms)
+dynamic_frame = DynamicFrame.fromDF(df, glueContext, "dynamic_frame")
+
+# 4. Show data in VS Code Console (for testing)
+dynamic_frame.show(5)
+
+# 5. Write to Temporary Store (S3) before Snowflake Validation
+# This ensures you have a backup of the raw API data
+glueContext.write_dynamic_frame.from_options(
+    frame=dynamic_frame,
+    connection_type="s3",
+    connection_options={"path": "s3://source-bucket-3523/raw-data/"},
+    format="json"
+)
+
+print("Data successfully moved to Temporary Store.")
+
